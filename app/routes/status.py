@@ -59,4 +59,7 @@ def model_status(
 def _is_process_ready(*, settings: Settings, model_state: ModelState) -> bool:
     if model_state.loaded:
         return True
-    return settings.vlm_mode == "cold" and model_state.status is ModelStatus.NOT_LOADED
+    return settings.vlm_mode == "cold" and model_state.status in {
+        ModelStatus.NOT_LOADED,
+        ModelStatus.LOADING,
+    }

@@ -70,6 +70,23 @@ def test_readyz_allows_cold_mode_before_model_is_loaded():
     }
 
 
+def test_readyz_allows_cold_mode_while_model_is_loading():
+    settings = Settings(vlm_mode="cold")
+    client = build_client(
+        ModelState(status=ModelStatus.LOADING, detail="model loading"),
+        settings=settings,
+    )
+
+    response = client.get("/readyz")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "model_status": "loading",
+        "detail": "model loading",
+    }
+
+
 def test_readyz_returns_200_when_model_is_ready():
     client = build_client(ModelState(status=ModelStatus.READY))
 

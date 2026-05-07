@@ -40,6 +40,16 @@ def test_cold_runtime_does_not_load_on_startup_by_default():
     assert runtime.process_ready is True
 
 
+def test_cold_runtime_is_process_ready_while_loading():
+    loader = FakeLoader()
+    runtime = VLMRuntime(loader=loader, mode="cold", load_on_startup=False)
+
+    runtime.mark_loading()
+
+    assert runtime.status.status == "loading"
+    assert runtime.process_ready is True
+
+
 def test_cold_runtime_loads_on_demand_and_can_unload_after_request():
     loader = FakeLoader()
     runtime = VLMRuntime(

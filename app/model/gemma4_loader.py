@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import gc
 from threading import Lock
 from typing import Literal
 
@@ -49,6 +50,7 @@ class Gemma4Loader:
         with self._load_lock:
             self.model = None
             self.processor = None
+        _release_cached_tensors()
 
 
 def _load_transformers_model(config: Gemma4LoaderConfig):
@@ -66,3 +68,14 @@ def _load_transformers_model(config: Gemma4LoaderConfig):
     processor = AutoProcessor.from_pretrained(config.model_id)
     model = AutoModelForImageTextToText.from_pretrained(config.model_id, **model_kwargs)
     return model, processor
+
+
+def _release_cached_tensors() -> None:
+    gc.collect()
+    try:
+        import torch
+    except ImportError:
+        return
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()

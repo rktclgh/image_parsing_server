@@ -56,18 +56,24 @@ class VLMRuntime:
     def process_ready(self) -> bool:
         if self.loaded:
             return True
-        return self.mode == "cold" and self.status.status is ModelStatus.NOT_LOADED
+        return self.mode == "cold" and self.status.status in {
+            ModelStatus.NOT_LOADED,
+            ModelStatus.LOADING,
+        }
 
     def startup(self) -> None:
         if self.load_on_startup:
             self.ensure_loaded()
+
+    def mark_loading(self) -> None:
+        self._status = RuntimeStatus(ModelStatus.LOADING, "model loading")
 
     def ensure_loaded(self) -> None:
         if self.loaded:
             self._status = RuntimeStatus(ModelStatus.READY)
             return
 
-        self._status = RuntimeStatus(ModelStatus.LOADING, "model loading")
+        self.mark_loading()
         try:
             self._loader.load()
         except Exception as exc:
