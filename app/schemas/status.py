@@ -1,4 +1,5 @@
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -32,7 +33,7 @@ class ModelStatusResponse(BaseModel):
     status: ModelStatus
     model_id: str
     quantization: str
-    runtime_mode: str
+    runtime_mode: Literal["resident", "cold"]
     load_on_startup: bool
     max_concurrent_generations: int = Field(ge=1)
     loaded: bool

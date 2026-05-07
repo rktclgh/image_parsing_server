@@ -1,3 +1,6 @@
+from threading import Thread
+import time
+
 from app.model.runtime import VLMRuntime
 
 
@@ -66,3 +69,22 @@ def test_cold_runtime_loads_on_demand_and_can_unload_after_request():
     assert loader.unload_calls == 1
     assert runtime.loaded is False
     assert runtime.status.status == "not_loaded"
+
+
+def test_runtime_serializes_concurrent_ensure_loaded_calls():
+    class SlowLoader(FakeLoader):
+        def load(self):
+            time.sleep(0.01)
+            return super().load()
+
+    loader = SlowLoader()
+    runtime = VLMRuntime(loader=loader, mode="cold", load_on_startup=False)
+    threads = [Thread(target=runtime.ensure_loaded) for _ in range(2)]
+
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert loader.load_calls == 1
+    assert runtime.loaded is True

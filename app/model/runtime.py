@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from threading import Lock
 from typing import Literal, Protocol
 
 from app.schemas.status import ModelStatus
@@ -7,7 +8,7 @@ from app.schemas.status import ModelStatus
 class Loader(Protocol):
     loaded: bool
 
-    def load(self):
+    def load(self) -> object:
         ...
 
     def unload(self) -> None:
@@ -28,19 +29,16 @@ class VLMRuntime:
         mode: Literal["resident", "cold"],
         load_on_startup: bool,
         unload_after_request: bool = False,
-        idle_ttl_seconds: int = 0,
     ) -> None:
         if mode not in {"resident", "cold"}:
             raise ValueError("mode must be one of: cold, resident")
-        if idle_ttl_seconds < 0:
-            raise ValueError("idle_ttl_seconds must be >= 0")
 
         self._loader = loader
         self.mode = mode
         self.load_on_startup = load_on_startup
         self.unload_after_request = unload_after_request
-        self.idle_ttl_seconds = idle_ttl_seconds
         self._status = RuntimeStatus(ModelStatus.NOT_LOADED, "model not loaded")
+        self._load_lock = Lock()
 
     @property
     def loaded(self) -> bool:
@@ -73,13 +71,18 @@ class VLMRuntime:
             self._status = RuntimeStatus(ModelStatus.READY)
             return
 
-        self.mark_loading()
-        try:
-            self._loader.load()
-        except Exception as exc:
-            self._status = RuntimeStatus(ModelStatus.ERROR, str(exc))
-            raise
-        self._status = RuntimeStatus(ModelStatus.READY)
+        with self._load_lock:
+            if self.loaded:
+                self._status = RuntimeStatus(ModelStatus.READY)
+                return
+
+            self.mark_loading()
+            try:
+                self._loader.load()
+            except Exception as exc:
+                self._status = RuntimeStatus(ModelStatus.ERROR, str(exc))
+                raise
+            self._status = RuntimeStatus(ModelStatus.READY)
 
     def after_request(self) -> None:
         if self.mode == "cold" and self.unload_after_request:

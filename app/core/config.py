@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 from pydantic import model_validator
@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     model_id: str = "google/gemma-4-E4B-it"
     quantization: Literal["8bit", "none"] = "8bit"
     vlm_mode: Literal["resident", "cold"] = "resident"
-    model_load_on_startup: bool | None = None
+    model_load_on_startup: bool = True
     model_idle_ttl_seconds: int = Field(default=0, ge=0)
     unload_after_request: bool = False
     max_concurrent_generations: int = Field(default=1, ge=1)
@@ -32,11 +32,19 @@ class Settings(BaseSettings):
     expose_raw_vlm_output: bool = False
     debug_enabled: bool = False
 
-    @model_validator(mode="after")
-    def apply_runtime_mode_defaults(self) -> "Settings":
-        if self.model_load_on_startup is None:
-            self.model_load_on_startup = self.vlm_mode == "resident"
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def apply_runtime_mode_defaults(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        if "model_load_on_startup" in data:
+            return data
+
+        resolved_data = dict(data)
+        resolved_data["model_load_on_startup"] = (
+            resolved_data.get("vlm_mode", "resident") == "resident"
+        )
+        return resolved_data
 
 
 @lru_cache
