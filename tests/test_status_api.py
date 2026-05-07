@@ -126,6 +126,7 @@ def test_model_status_returns_stable_model_contract():
         "quantization": settings.quantization,
         "runtime_mode": settings.vlm_mode,
         "load_on_startup": settings.model_load_on_startup,
+        "unload_after_request": settings.unload_after_request,
         "max_concurrent_generations": settings.max_concurrent_generations,
         "loaded": True,
         "detail": None,

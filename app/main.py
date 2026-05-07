@@ -13,6 +13,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title=resolved_settings.service_name,
         version=resolved_settings.service_version,
     )
+    app.dependency_overrides[get_settings] = lambda: resolved_settings
     app.add_exception_handler(AppError, _app_error_handler)
     app.include_router(parse_router)
     app.include_router(status_router)
