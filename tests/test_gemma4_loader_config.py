@@ -48,3 +48,19 @@ def test_gemma4_loader_load_serializes_concurrent_calls(monkeypatch):
     assert loader.load() is loader
     assert loader.load() is loader
     assert calls == [loader.config]
+
+
+def test_gemma4_loader_unload_releases_model_references_and_cached_tensors(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr("app.model.gemma4_loader._release_cached_tensors", lambda: calls.append("release"))
+    loader = Gemma4Loader()
+    loader.model = object()
+    loader.processor = object()
+
+    loader.unload()
+
+    assert loader.loaded is False
+    assert loader.model is None
+    assert loader.processor is None
+    assert calls == ["release"]

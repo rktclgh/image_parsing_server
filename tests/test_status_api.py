@@ -1,13 +1,18 @@
 from fastapi.testclient import TestClient
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.main import create_app
 from app.schemas.status import ModelStatus
 from app.services.model_state import ModelState, get_model_state
 
 
-def build_client(model_state: ModelState | None = None) -> TestClient:
-    app = create_app()
+def build_client(
+    model_state: ModelState | None = None,
+    settings: Settings | None = None,
+) -> TestClient:
+    app = create_app(settings=settings)
+    if settings is not None:
+        app.dependency_overrides[get_settings] = lambda: settings
     if model_state is not None:
         app.dependency_overrides[get_model_state] = lambda: model_state
     return TestClient(app)
@@ -48,6 +53,40 @@ def test_readyz_returns_503_until_model_is_ready_or_degraded():
     }
 
 
+def test_readyz_allows_cold_mode_before_model_is_loaded():
+    settings = Settings(vlm_mode="cold")
+    client = build_client(
+        ModelState(status=ModelStatus.NOT_LOADED, detail="cold model not loaded"),
+        settings=settings,
+    )
+
+    response = client.get("/readyz")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "model_status": "not_loaded",
+        "detail": "cold model not loaded",
+    }
+
+
+def test_readyz_allows_cold_mode_while_model_is_loading():
+    settings = Settings(vlm_mode="cold")
+    client = build_client(
+        ModelState(status=ModelStatus.LOADING, detail="model loading"),
+        settings=settings,
+    )
+
+    response = client.get("/readyz")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "model_status": "loading",
+        "detail": "model loading",
+    }
+
+
 def test_readyz_returns_200_when_model_is_ready():
     client = build_client(ModelState(status=ModelStatus.READY))
 
@@ -85,6 +124,8 @@ def test_model_status_returns_stable_model_contract():
         "status": "ready",
         "model_id": settings.model_id,
         "quantization": settings.quantization,
+        "runtime_mode": settings.vlm_mode,
+        "load_on_startup": settings.model_load_on_startup,
         "max_concurrent_generations": settings.max_concurrent_generations,
         "loaded": True,
         "detail": None,
