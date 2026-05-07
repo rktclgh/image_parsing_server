@@ -8,8 +8,10 @@ Use `develop` as the clean integration branch. Feature work should happen in a d
 
 ```bash
 git worktree add -b feature/example ../image_parsing_server-example develop
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install -e ".[dev]"
+python -m pytest
 ```
-
-Python package setup and test commands are introduced with the parser service contracts PR.
 
 GPU/model validation belongs on the Linux server.
