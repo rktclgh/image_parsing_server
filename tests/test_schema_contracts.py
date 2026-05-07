@@ -51,4 +51,4 @@ def test_compact_parse_contract_excludes_raw_debug_by_default():
         "options": {},
     }
     assert "raw_vlm_output" not in response.model_dump(mode="json")
-    assert response.elements[0].bbox == [0, 0, 50, 20]
+    assert response.elements[0].bbox == (0, 0, 50, 20)

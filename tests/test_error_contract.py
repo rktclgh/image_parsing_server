@@ -45,3 +45,13 @@ def test_error_response_rejects_unsafe_detail_keys():
             message="Internal error",
             details={"traceback": "hidden", "raw_vlm_output": "hidden"},
         )
+
+
+def test_error_response_allows_safe_words_that_contain_unsafe_substrings():
+    response = ErrorResponse(
+        error_code=ErrorCode.INTERNAL_ERROR,
+        message="Internal error",
+        details={"draw_time_ms": 12, "haystack_size": 3},
+    )
+
+    assert response.details == {"draw_time_ms": 12, "haystack_size": 3}

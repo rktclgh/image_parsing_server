@@ -25,7 +25,7 @@ class ColorSwatch(BaseModel):
 
 class ParsedElement(BaseModel):
     kind: Literal["text", "logo", "icon", "illustration", "shape", "photo", "unknown"]
-    bbox: list[int] = Field(min_length=4, max_length=4)
+    bbox: tuple[int, int, int, int]
     text: str | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 

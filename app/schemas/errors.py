@@ -1,3 +1,4 @@
+import re
 from enum import StrEnum
 from typing import TypeAlias
 
@@ -30,6 +31,8 @@ UNSAFE_DETAIL_KEYWORDS = (
     "vlm",
 )
 
+DETAIL_KEY_TOKEN_RE = re.compile(r"[\W_]+")
+
 
 class ErrorResponse(BaseModel):
     error_code: ErrorCode
@@ -43,9 +46,13 @@ class ErrorResponse(BaseModel):
         unsafe_keys = [
             key
             for key in details
-            if any(keyword in key.lower() for keyword in UNSAFE_DETAIL_KEYWORDS)
+            if any(keyword in _detail_key_tokens(key) for keyword in UNSAFE_DETAIL_KEYWORDS)
         ]
         if unsafe_keys:
             keys = ", ".join(sorted(unsafe_keys))
             raise ValueError(f"unsafe error detail keys: {keys}")
         return details
+
+
+def _detail_key_tokens(key: str) -> set[str]:
+    return {token for token in DETAIL_KEY_TOKEN_RE.split(key.lower()) if token}
