@@ -5,6 +5,8 @@ from PIL import Image
 import pytest
 
 from app.main import create_app
+from app.routes.parse import get_compact_parse_service
+from app.schemas.compact import CompactParseResponse, CompactStyleProfile, ParseMetadata
 
 
 def _image_bytes(mode: str, size: tuple[int, int], color, image_format: str) -> bytes:
@@ -57,6 +59,34 @@ def test_parse_compact_returns_deterministic_image_summary():
     }
     assert body["elements"] == []
     assert body["warnings"] == []
+
+
+def test_parse_compact_delegates_to_compact_parse_service():
+    app = create_app()
+    captured = {}
+
+    class FakeCompactParseService:
+        async def parse_image(self, data: bytes) -> CompactParseResponse:
+            captured["data"] = data
+            return CompactParseResponse(
+                request_id="req-fake",
+                metadata=ParseMetadata(width=9, height=4, mime_type="image/png"),
+                style=CompactStyleProfile(summary="fake service response"),
+            )
+
+    app.dependency_overrides[get_compact_parse_service] = FakeCompactParseService
+    client = TestClient(app)
+    data = _palette_image_bytes()
+
+    response = client.post(
+        "/v1/parse/compact",
+        files={"file": ("palette.png", data, "image/png")},
+    )
+
+    assert captured["data"] == data
+    assert response.status_code == 200
+    assert response.json()["request_id"] == "req-fake"
+    assert response.json()["style"]["summary"] == "fake service response"
 
 
 def test_parse_compact_reports_app_errors_with_stable_shape():
