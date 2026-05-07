@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Response, status
 
 from app.core.config import Settings, get_settings
-from app.schemas.status import HealthResponse, ModelStatus, ModelStatusResponse, ReadyResponse, ServiceStatus
+from app.schemas.status import HealthResponse, ModelStatusResponse, ReadyResponse, ServiceStatus
 from app.services.model_state import ModelState, get_model_state
 
 router = APIRouter()
@@ -21,7 +21,7 @@ def readyz(
     response: Response,
     model_state: ModelState = Depends(get_model_state),
 ) -> ReadyResponse:
-    is_ready = model_state.status in {ModelStatus.READY, ModelStatus.DEGRADED}
+    is_ready = model_state.loaded
     if not is_ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
