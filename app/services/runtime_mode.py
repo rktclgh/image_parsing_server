@@ -5,6 +5,7 @@ from typing import Literal
 from fastapi import Depends, Request
 
 from app.core.config import Settings, get_settings
+from app.model.runtime import VLMRuntime
 
 RuntimeMode = Literal["resident", "cold"]
 
@@ -17,8 +18,9 @@ class RuntimeModeSnapshot:
 
 
 class RuntimeModeController:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, runtime: VLMRuntime | None = None) -> None:
         self._lock = Lock()
+        self._runtime = runtime
         self._snapshot = RuntimeModeSnapshot(
             mode=settings.vlm_mode,
             load_on_startup=settings.model_load_on_startup,
@@ -50,6 +52,12 @@ class RuntimeModeController:
                     else self._snapshot.unload_after_request
                 ),
             )
+            if self._runtime is not None:
+                self._runtime.configure(
+                    mode=self._snapshot.mode,
+                    load_on_startup=self._snapshot.load_on_startup,
+                    unload_after_request=self._snapshot.unload_after_request,
+                )
             return self._snapshot
 
 
@@ -63,7 +71,8 @@ def get_runtime_mode_controller(
 ) -> RuntimeModeController:
     controller = getattr(request.app.state, "runtime_mode_controller", None)
     if controller is None:
-        controller = create_runtime_mode_controller(settings)
+        runtime = getattr(request.app.state, "vlm_runtime", None)
+        controller = RuntimeModeController(settings, runtime=runtime)
         request.app.state.runtime_mode_controller = controller
     return controller
 
