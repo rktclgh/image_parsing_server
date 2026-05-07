@@ -1,4 +1,5 @@
 from collections import Counter
+from collections.abc import Iterable, Iterator
 
 from PIL import Image
 
@@ -15,7 +16,7 @@ def analyze_image(
 ) -> DeterministicAnalysis:
     decoded = decode_image_upload(data, settings=settings)
     image = decoded.image
-    rgba_image = image.convert("RGBA")
+    rgba_image = image if image.mode == "RGBA" else image.convert("RGBA")
     visible_pixels = _visible_rgb_pixels(rgba_image)
     palette = _extract_palette(visible_pixels, palette_size=palette_size)
     bbox = _non_transparent_bbox(rgba_image) if decoded.metadata.alpha_present else None
@@ -29,12 +30,10 @@ def analyze_image(
     )
 
 
-def _visible_rgb_pixels(image: Image.Image) -> list[tuple[int, int, int]]:
-    return [
-        (red, green, blue)
-        for red, green, blue, alpha in _iter_rgba_pixels(image)
-        if alpha > 0
-    ]
+def _visible_rgb_pixels(image: Image.Image) -> Iterator[tuple[int, int, int]]:
+    for red, green, blue, alpha in _iter_rgba_pixels(image):
+        if alpha > 0:
+            yield red, green, blue
 
 
 def _iter_rgba_pixels(image: Image.Image):
@@ -45,18 +44,25 @@ def _iter_rgba_pixels(image: Image.Image):
 
 
 def _extract_palette(
-    pixels: list[tuple[int, int, int]],
+    pixels: Iterable[tuple[int, int, int]],
     *,
     palette_size: int,
 ) -> list[PaletteColor]:
-    if palette_size <= 0 or not pixels:
+    if palette_size <= 0:
         return []
 
-    total = len(pixels)
-    counts = Counter(pixels)
+    total = 0
+    counts: Counter[tuple[int, int, int]] = Counter()
+    for rgb in pixels:
+        counts[rgb] += 1
+        total += 1
+
+    if total == 0:
+        return []
+
     ranked = sorted(
         counts.items(),
-        key=lambda item: (-item[1], _to_hex(item[0])),
+        key=lambda item: (-item[1], item[0]),
     )
 
     return [
