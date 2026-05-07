@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -34,11 +35,11 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        runtime.startup()
         try:
+            await asyncio.to_thread(runtime.startup)
             yield
         finally:
-            runtime.unload()
+            await asyncio.to_thread(runtime.unload)
 
     app = FastAPI(
         title=resolved_settings.service_name,

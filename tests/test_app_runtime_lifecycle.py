@@ -58,6 +58,28 @@ def test_app_lifespan_keeps_cold_runtime_unloaded_but_process_ready():
     assert ready_response.status_code == 200
 
 
+def test_app_lifespan_unloads_when_resident_startup_fails():
+    class FailingLoader(FakeLoader):
+        def load(self):
+            self.load_calls += 1
+            raise RuntimeError("startup failed")
+
+    loader = FailingLoader()
+    app = create_app(
+        settings=Settings(vlm_mode="resident"),
+        model_loader=loader,
+    )
+
+    try:
+        with TestClient(app):
+            raise AssertionError("lifespan startup should fail")
+    except RuntimeError as exc:
+        assert str(exc) == "startup failed"
+
+    assert loader.load_calls == 1
+    assert loader.unload_calls == 1
+
+
 def test_runtime_mode_api_updates_actual_runtime_snapshot():
     loader = FakeLoader()
     app = create_app(
