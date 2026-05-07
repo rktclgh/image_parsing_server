@@ -7,10 +7,9 @@ Internal FastAPI service for parsing design images with deterministic image anal
 Use `develop` as the clean integration branch. Feature work should happen in a dedicated worktree and feature branch.
 
 ```bash
-python -m venv .venv
-. .venv/bin/activate
-pip install -e ".[dev]"
-python -m pytest
+git worktree add -b feature/example ../image_parsing_server-example develop
 ```
+
+Python package setup and test commands are introduced with the parser service contracts PR.
 
 GPU/model validation belongs on the Linux server.
