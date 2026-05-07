@@ -25,6 +25,7 @@ def test_model_status_response_serializes_contract():
         quantization="8bit",
         runtime_mode="resident",
         load_on_startup=True,
+        unload_after_request=False,
         max_concurrent_generations=1,
         loaded=True,
     )
@@ -35,6 +36,7 @@ def test_model_status_response_serializes_contract():
         "quantization": "8bit",
         "runtime_mode": "resident",
         "load_on_startup": True,
+        "unload_after_request": False,
         "max_concurrent_generations": 1,
         "loaded": True,
         "detail": None,
