@@ -109,7 +109,34 @@ def test_gemma4_compact_provider_generates_and_parses_compact_output():
     assert runtime.after_request_calls == 1
     assert loader.processor.messages[0]["content"][0]["type"] == "image"
     assert loader.processor.messages[0]["content"][1]["type"] == "text"
-    assert loader.model.generated_inputs == {"input_ids": [1]}
+    assert loader.model.generated_inputs == {"input_ids": [[1]]}
+    assert loader.processor.decoded_ids == [[2]]
+
+
+def test_gemma4_compact_provider_decodes_only_new_tokens_after_prompt():
+    loader = FakeLoader(
+        processor=FakeProcessor(
+            generated_text=json.dumps(
+                {
+                    "asset_type": "branding",
+                    "style": {"summary": "trimmed assistant output"},
+                }
+            ),
+            input_ids=[[101, 102]],
+        ),
+        model=FakeModel(generated_ids=[[101, 102, 201, 202]]),
+    )
+    provider = Gemma4CompactProvider(
+        runtime=FakeRuntime(loader),
+        loader=loader,
+        prompt_text="Analyze with {JSON schema example}.",
+    )
+
+    output = asyncio.run(provider(PNG_BYTES, _deterministic_response()))
+
+    assert output.asset_type == "branding"
+    assert output.style.summary == "trimmed assistant output"
+    assert loader.processor.decoded_ids == [[201, 202]]
 
 
 def test_gemma4_compact_provider_rejects_missing_model_binding_safely():
@@ -150,8 +177,15 @@ class FakeLoader:
 
 
 class FakeProcessor:
-    def __init__(self, *, generated_text: str):
+    def __init__(
+        self,
+        *,
+        generated_text: str,
+        input_ids=None,
+    ):
         self.generated_text = generated_text
+        self.input_ids = input_ids or [[1]]
+        self.decoded_ids = None
         self.messages = None
 
     def apply_chat_template(
@@ -168,10 +202,10 @@ class FakeProcessor:
         assert tokenize is True
         assert return_dict is True
         assert return_tensors == "pt"
-        return FakeInputs({"input_ids": [1]})
+        return FakeInputs({"input_ids": self.input_ids})
 
     def batch_decode(self, generated_ids, *, skip_special_tokens):
-        assert generated_ids == [[2]]
+        self.decoded_ids = generated_ids
         assert skip_special_tokens is True
         return [self.generated_text]
 
@@ -184,9 +218,10 @@ class FakeInputs(dict):
 class FakeModel:
     device = "cuda:0"
 
-    def __init__(self):
+    def __init__(self, *, generated_ids=None):
+        self.generated_ids = generated_ids or [[1, 2]]
         self.generated_inputs = None
 
     def generate(self, **inputs):
         self.generated_inputs = inputs
-        return [[2]]
+        return self.generated_ids

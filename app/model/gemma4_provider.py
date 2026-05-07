@@ -124,7 +124,8 @@ class Gemma4CompactProvider:
             inputs = inputs.to(getattr(model, "device", None))
 
         generated_ids = model.generate(**inputs, **self._generate_kwargs)
-        decoded = processor.batch_decode(generated_ids, skip_special_tokens=True)
+        new_token_ids = _trim_prompt_tokens(generated_ids, inputs)
+        decoded = processor.batch_decode(new_token_ids, skip_special_tokens=True)
         if not decoded:
             raise AppError(
                 ErrorCode.VLM_INVALID_JSON,
@@ -167,6 +168,28 @@ def _format_palette_swatch(swatch) -> str:
     if swatch.ratio is not None:
         parts.append(f"ratio={swatch.ratio:.4f}")
     return " ".join(parts)
+
+
+def _trim_prompt_tokens(generated_ids, inputs):
+    input_ids = _input_ids_from_model_inputs(inputs)
+    if input_ids is None:
+        return generated_ids
+
+    try:
+        return [
+            output_ids[len(prompt_ids) :]
+            for prompt_ids, output_ids in zip(input_ids, generated_ids, strict=False)
+        ]
+    except TypeError:
+        return generated_ids
+
+
+def _input_ids_from_model_inputs(inputs):
+    if isinstance(inputs, Mapping):
+        return inputs.get("input_ids")
+    if hasattr(inputs, "get"):
+        return inputs.get("input_ids")
+    return None
 
 
 def _read_default_prompt() -> str:
