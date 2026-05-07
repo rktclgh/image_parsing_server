@@ -1,2 +1,16 @@
 # image_parsing_server
-Server for Parsing Design images powered by Fast API
+
+Internal FastAPI service for parsing design images with deterministic image analysis and a resident Gemma VLM runtime.
+
+## Development
+
+Use `develop` as the clean integration branch. Feature work should happen in a dedicated worktree and feature branch.
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+pip install -e ".[dev]"
+python -m pytest
+```
+
+GPU/model validation belongs on the Linux server.
