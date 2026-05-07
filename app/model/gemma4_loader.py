@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from threading import Lock
 from typing import Literal
 
 DEFAULT_MODEL_ID = "google/gemma-4-E4B-it"
@@ -8,7 +9,7 @@ SUPPORTED_QUANTIZATIONS = {"8bit", "none"}
 @dataclass(frozen=True)
 class Gemma4LoaderConfig:
     model_id: str = DEFAULT_MODEL_ID
-    quantization: Literal["8bit", "none"] | str = "8bit"
+    quantization: Literal["8bit", "none"] = "8bit"
 
     def __post_init__(self) -> None:
         if self.quantization not in SUPPORTED_QUANTIZATIONS:
@@ -29,6 +30,7 @@ class Gemma4Loader:
         self.config = config or Gemma4LoaderConfig()
         self.model = None
         self.processor = None
+        self._load_lock = Lock()
 
     @property
     def loaded(self) -> bool:
@@ -37,7 +39,10 @@ class Gemma4Loader:
     def load(self) -> "Gemma4Loader":
         if self.loaded:
             return self
-        self.model, self.processor = _load_transformers_model(self.config)
+        with self._load_lock:
+            if self.loaded:
+                return self
+            self.model, self.processor = _load_transformers_model(self.config)
         return self
 
 
@@ -49,7 +54,7 @@ def _load_transformers_model(config: Gemma4LoaderConfig):
             "transformers is required to load Gemma 4; install the gpu extra"
         ) from exc
 
-    model_kwargs = {"device_map": "auto"}
+    model_kwargs = {"device_map": "auto", "torch_dtype": "auto"}
     if config.quantization == "8bit":
         model_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
 

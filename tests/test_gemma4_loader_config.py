@@ -33,3 +33,18 @@ def test_gemma4_loader_load_boundary_is_lazy_and_patchable(monkeypatch):
     assert loaded is loader
     assert loader.loaded is True
     assert calls == [loader.config]
+
+
+def test_gemma4_loader_load_serializes_concurrent_calls(monkeypatch):
+    calls = []
+
+    def fake_load_transformers_model(config):
+        calls.append(config)
+        return object(), object()
+
+    monkeypatch.setattr("app.model.gemma4_loader._load_transformers_model", fake_load_transformers_model)
+    loader = Gemma4Loader()
+
+    assert loader.load() is loader
+    assert loader.load() is loader
+    assert calls == [loader.config]

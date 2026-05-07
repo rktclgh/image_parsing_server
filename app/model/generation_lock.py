@@ -34,10 +34,7 @@ class GenerationLock:
         if not blocking and timeout is not None:
             raise ValueError("timeout cannot be set for non-blocking acquire")
 
-        if timeout is None:
-            acquired = self._semaphore.acquire(blocking=blocking)
-        else:
-            acquired = self._semaphore.acquire(blocking=blocking, timeout=timeout)
+        acquired = self._semaphore.acquire(blocking=blocking, timeout=timeout)
 
         if acquired:
             return GenerationLockLease(self._semaphore, acquired=True)

@@ -35,3 +35,16 @@ def test_get_gpu_status_has_no_gpu_dependency(monkeypatch):
     assert status.available is False
     assert status.gpus == []
     assert "nvidia-smi not found" in status.detail
+
+
+def test_get_gpu_status_handles_unexpected_nvidia_smi_output(monkeypatch):
+    def fake_run(*args, **kwargs):
+        return subprocess.CompletedProcess(args[0], 0, stdout="N/A, N/A, N/A\n", stderr="")
+
+    monkeypatch.setattr(gpu_status.subprocess, "run", fake_run)
+
+    status = get_gpu_status()
+
+    assert status.available is False
+    assert status.gpus == []
+    assert "failed to parse GPU stats" in status.detail

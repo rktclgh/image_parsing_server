@@ -53,10 +53,13 @@ def get_gpu_status() -> GpuStatus:
         detail = exc.stderr.strip() or "nvidia-smi failed"
         return GpuStatus(available=False, detail=detail)
 
-    return GpuStatus(
-        available=True,
-        gpus=parse_nvidia_smi_memory_csv(result.stdout),
-    )
+    try:
+        return GpuStatus(
+            available=True,
+            gpus=parse_nvidia_smi_memory_csv(result.stdout),
+        )
+    except ValueError as exc:
+        return GpuStatus(available=False, detail=f"failed to parse GPU stats: {exc}")
 
 
 def _parse_memory_mb(value: str) -> int:
