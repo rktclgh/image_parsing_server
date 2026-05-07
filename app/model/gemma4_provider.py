@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from base64 import b64encode
 from collections.abc import Mapping
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -83,7 +84,7 @@ class Gemma4CompactProvider:
         image_bytes: bytes,
         deterministic: CompactParseResponse,
     ) -> VLMCompactOutput:
-        self._runtime.ensure_loaded()
+        await asyncio.to_thread(self._runtime.ensure_loaded)
         try:
             return await asyncio.to_thread(
                 self._generate_and_parse,
@@ -91,7 +92,7 @@ class Gemma4CompactProvider:
                 deterministic,
             )
         finally:
-            self._runtime.after_request()
+            await asyncio.to_thread(self._runtime.after_request)
 
     def _generate_and_parse(
         self,
@@ -120,8 +121,9 @@ class Gemma4CompactProvider:
             return_dict=True,
             return_tensors="pt",
         )
-        if hasattr(inputs, "to"):
-            inputs = inputs.to(getattr(model, "device", None))
+        device = getattr(model, "device", None)
+        if device is not None and hasattr(inputs, "to"):
+            inputs = inputs.to(device)
 
         generated_ids = model.generate(**inputs, **self._generate_kwargs)
         new_token_ids = _trim_prompt_tokens(generated_ids, inputs)
@@ -192,5 +194,6 @@ def _input_ids_from_model_inputs(inputs):
     return None
 
 
+@lru_cache(maxsize=1)
 def _read_default_prompt() -> str:
     return DEFAULT_PROMPT_PATH.read_text(encoding="utf-8")

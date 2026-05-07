@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 from base64 import b64encode
 from unittest.mock import ANY
 
@@ -99,6 +100,7 @@ def test_gemma4_compact_provider_generates_and_parses_compact_output():
     )
     runtime = FakeRuntime(loader)
     provider = Gemma4CompactProvider(runtime=runtime, loader=loader, prompt_text="Analyze.")
+    caller_thread_id = threading.get_ident()
 
     output = asyncio.run(provider(PNG_BYTES, _deterministic_response()))
 
@@ -107,6 +109,8 @@ def test_gemma4_compact_provider_generates_and_parses_compact_output():
     assert output.warnings == ["low contrast text"]
     assert runtime.ensure_loaded_calls == 1
     assert runtime.after_request_calls == 1
+    assert runtime.ensure_thread_ids[0] != caller_thread_id
+    assert runtime.after_request_thread_ids[0] != caller_thread_id
     assert loader.processor.messages[0]["content"][0]["type"] == "image"
     assert loader.processor.messages[0]["content"][1]["type"] == "text"
     assert loader.model.generated_inputs == {"input_ids": [[1]]}
@@ -139,6 +143,30 @@ def test_gemma4_compact_provider_decodes_only_new_tokens_after_prompt():
     assert loader.processor.decoded_ids == [[201, 202]]
 
 
+def test_gemma4_compact_provider_does_not_move_inputs_without_model_device():
+    loader = FakeLoader(
+        processor=FakeProcessor(
+            generated_text=json.dumps(
+                {
+                    "asset_type": "illustration",
+                    "style": {"summary": "model without device attr"},
+                }
+            )
+        ),
+        model=FakeModelWithoutDevice(),
+    )
+    provider = Gemma4CompactProvider(
+        runtime=FakeRuntime(loader),
+        loader=loader,
+        prompt_text="Analyze.",
+    )
+
+    output = asyncio.run(provider(PNG_BYTES, _deterministic_response()))
+
+    assert output.asset_type == "illustration"
+    assert output.style.summary == "model without device attr"
+
+
 def test_gemma4_compact_provider_rejects_missing_model_binding_safely():
     loader = FakeLoader(processor=FakeProcessor(generated_text="{}"), model=None)
     provider = Gemma4CompactProvider(
@@ -162,12 +190,16 @@ class FakeRuntime:
         self.loader = loader
         self.ensure_loaded_calls = 0
         self.after_request_calls = 0
+        self.ensure_thread_ids = []
+        self.after_request_thread_ids = []
 
     def ensure_loaded(self):
         self.ensure_loaded_calls += 1
+        self.ensure_thread_ids.append(threading.get_ident())
 
     def after_request(self):
         self.after_request_calls += 1
+        self.after_request_thread_ids.append(threading.get_ident())
 
 
 class FakeLoader:
@@ -211,7 +243,8 @@ class FakeProcessor:
 
 
 class FakeInputs(dict):
-    def to(self, _device):
+    def to(self, device):
+        assert device is not None
         return self
 
 
@@ -225,3 +258,12 @@ class FakeModel:
     def generate(self, **inputs):
         self.generated_inputs = inputs
         return self.generated_ids
+
+
+class FakeModelWithoutDevice:
+    def __init__(self):
+        self.generated_inputs = None
+
+    def generate(self, **inputs):
+        self.generated_inputs = inputs
+        return [[1, 2]]
