@@ -1,5 +1,11 @@
 from app.parsers.fusion import fuse_deterministic_with_vlm
-from app.schemas.compact import ColorSwatch, CompactParseResponse, CompactStyleProfile, ParseMetadata
+from app.schemas.compact import (
+    ColorSwatch,
+    CompactParseResponse,
+    CompactStyleProfile,
+    ParsedElement,
+    ParseMetadata,
+)
 from app.schemas.vlm import VLMCompactOutput
 
 
@@ -11,6 +17,7 @@ def test_fusion_preserves_deterministic_metadata_and_palette_precedence():
             summary="deterministic summary",
             palette=[ColorSwatch(hex="#FFFFFF", ratio=0.6, role="background")],
         ),
+        elements=[ParsedElement(kind="logo", bbox=(0, 0, 120, 80), text="detected")],
     )
     vlm = VLMCompactOutput.model_validate(
         {
@@ -35,7 +42,7 @@ def test_fusion_preserves_deterministic_metadata_and_palette_precedence():
     assert fused.style.visual_tone == ["energetic"]
     assert fused.style.typography == ["bold condensed"]
     assert fused.style.composition == ["radial badge"]
-    assert fused.elements[0].text == "Launch"
+    assert fused.elements == deterministic.elements
 
 
 def test_fusion_uses_vlm_palette_only_when_deterministic_palette_missing():

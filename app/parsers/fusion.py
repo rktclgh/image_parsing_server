@@ -29,7 +29,7 @@ def fuse_deterministic_with_vlm(
     return deterministic.model_copy(
         update={
             "style": fused_style,
-            "elements": vlm.elements or deterministic.elements,
+            "elements": deterministic.elements or vlm.elements,
             "warnings": warnings,
         },
         deep=True,
