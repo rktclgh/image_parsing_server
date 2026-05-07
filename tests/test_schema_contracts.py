@@ -23,6 +23,8 @@ def test_model_status_response_serializes_contract():
         status=ModelStatus.READY,
         model_id="google/gemma-4-E4B-it",
         quantization="8bit",
+        runtime_mode="resident",
+        load_on_startup=True,
         max_concurrent_generations=1,
         loaded=True,
     )
@@ -31,6 +33,8 @@ def test_model_status_response_serializes_contract():
         "status": "ready",
         "model_id": "google/gemma-4-E4B-it",
         "quantization": "8bit",
+        "runtime_mode": "resident",
+        "load_on_startup": True,
         "max_concurrent_generations": 1,
         "loaded": True,
         "detail": None,

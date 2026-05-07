@@ -32,6 +32,8 @@ class ModelStatusResponse(BaseModel):
     status: ModelStatus
     model_id: str
     quantization: str
+    runtime_mode: str
+    load_on_startup: bool
     max_concurrent_generations: int = Field(ge=1)
     loaded: bool
     detail: str | None = None

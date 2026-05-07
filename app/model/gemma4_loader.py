@@ -45,6 +45,11 @@ class Gemma4Loader:
             self.model, self.processor = _load_transformers_model(self.config)
         return self
 
+    def unload(self) -> None:
+        with self._load_lock:
+            self.model = None
+            self.processor = None
+
 
 def _load_transformers_model(config: Gemma4LoaderConfig):
     try:
