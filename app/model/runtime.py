@@ -63,6 +63,21 @@ class VLMRuntime:
         if self.load_on_startup:
             self.ensure_loaded()
 
+    def configure(
+        self,
+        *,
+        mode: Literal["resident", "cold"],
+        load_on_startup: bool,
+        unload_after_request: bool,
+    ) -> None:
+        if mode not in {"resident", "cold"}:
+            raise ValueError("mode must be one of: cold, resident")
+
+        with self._load_lock:
+            self.mode = mode
+            self.load_on_startup = load_on_startup
+            self.unload_after_request = unload_after_request
+
     def mark_loading(self) -> None:
         self._status = RuntimeStatus(ModelStatus.LOADING, "model loading")
 

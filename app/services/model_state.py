@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from fastapi import Request
+
 from app.schemas.status import ModelStatus
 
 
@@ -16,5 +18,13 @@ class ModelState:
 _MODEL_STATE = ModelState()
 
 
-def get_model_state() -> ModelState:
-    return _MODEL_STATE
+def get_model_state(request: Request) -> ModelState:
+    runtime = getattr(request.app.state, "vlm_runtime", None)
+    if runtime is None:
+        return _MODEL_STATE
+
+    runtime_status = runtime.status
+    return ModelState(
+        status=runtime_status.status,
+        detail=runtime_status.detail,
+    )
