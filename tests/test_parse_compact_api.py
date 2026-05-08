@@ -7,7 +7,7 @@ import pytest
 
 from app.core.config import Settings
 from app.main import create_app
-from app.routes.parse import get_compact_parse_service
+from app.routes.parse import get_compact_parse_service, get_vlm_provider
 from app.schemas.compact import CompactParseResponse, CompactStyleProfile, ParseMetadata
 
 
@@ -178,6 +178,45 @@ def test_parse_compact_delegates_to_compact_parse_service():
     assert response.status_code == 200
     assert response.json()["request_id"] == "req-fake"
     assert response.json()["style"]["summary"] == "fake service response"
+
+
+def test_parse_compact_echoes_request_id_header_on_success():
+    client = TestClient(
+        create_app(settings=Settings(vlm_mode="cold"), model_loader=FailingGemmaLoader())
+    )
+    data = _palette_image_bytes()
+
+    response = client.post(
+        "/v1/parse/compact",
+        files={"file": ("palette.png", data, "image/png")},
+        headers={"x-request-id": "spring-job-123"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["request_id"] == "spring-job-123"
+
+
+def test_parse_compact_passes_request_id_to_provider_context():
+    seen = {}
+
+    async def vlm_provider(_data, deterministic):
+        seen["request_id"] = deterministic.request_id
+        return None
+
+    app = create_app(settings=Settings(vlm_mode="cold"))
+    app.dependency_overrides[get_vlm_provider] = lambda: vlm_provider
+    client = TestClient(app)
+    data = _palette_image_bytes()
+
+    response = client.post(
+        "/v1/parse/compact",
+        files={"file": ("palette.png", data, "image/png")},
+        headers={"x-request-id": "spring-job-provider-456"},
+    )
+
+    assert response.status_code == 200
+    assert seen["request_id"] == "spring-job-provider-456"
+    assert response.json()["request_id"] == "spring-job-provider-456"
 
 
 def test_parse_compact_reports_app_errors_with_stable_shape():

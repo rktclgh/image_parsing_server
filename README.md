@@ -30,3 +30,7 @@ curl -fsS http://127.0.0.1:${IMAGE_PARSER_PORT:-8000}/healthz
 ```
 
 See [docs/docker-linux-service.md](docs/docker-linux-service.md) for worktree setup, environment defaults, GPU preflight checks, and runtime validation notes.
+
+## API boundary
+
+Spring owns durable parse job state and may send `X-Request-ID` when calling `POST /v1/parse/compact`. The parser echoes that value in both successful compact parse responses and typed error envelopes so Spring can correlate direct worker calls with Redis/job records without making FastAPI own durable queue state.
