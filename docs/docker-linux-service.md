@@ -26,7 +26,7 @@ Compose can start with its checked-in defaults when `.env` is absent, but copyin
 Important defaults:
 
 - `IMAGE_PARSER_VLM_MODE=resident`
-- `IMAGE_PARSER_MODEL_LOAD_ON_STARTUP=true`
+- `IMAGE_PARSER_MODEL_LOAD_ON_STARTUP` is intentionally unset by Docker/Compose; the app derives startup loading from `IMAGE_PARSER_VLM_MODE` unless you explicitly override it.
 - `IMAGE_PARSER_MAX_CONCURRENT_GENERATIONS=1`
 - `CUDA_VISIBLE_DEVICES=0` pins the process to one visible GPU while the compose device reservation requests one NVIDIA GPU.
 - Docker image command includes `uvicorn ... --workers 1`; Compose intentionally relies on the image default command.
