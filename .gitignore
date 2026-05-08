@@ -1,4 +1,5 @@
-docs/
+docs/*
+!docs/docker-linux-service.md
 .idea/
 .vscode/
 .DS_Store
