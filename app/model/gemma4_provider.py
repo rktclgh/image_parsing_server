@@ -4,6 +4,7 @@ import asyncio
 from base64 import b64encode
 from collections.abc import Mapping
 from functools import lru_cache
+import logging
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -17,6 +18,7 @@ from app.schemas.vlm import VLMCompactOutput
 DEFAULT_PROMPT_PATH = (
     Path(__file__).resolve().parents[2] / "prompts" / "design_style_parser_compact_v1.txt"
 )
+logger = logging.getLogger(__name__)
 
 
 class Gemma4Runtime(Protocol):
@@ -98,16 +100,32 @@ class Gemma4CompactProvider:
                     details={"retry_after_seconds": 1},
                 )
 
+        primary_error: Exception | None = None
         try:
-            await asyncio.to_thread(self._runtime.ensure_loaded)
+            stage = "load"
             try:
+                await asyncio.to_thread(self._runtime.ensure_loaded)
+                stage = "generate"
                 return await asyncio.to_thread(
                     self._generate_and_parse,
                     image_bytes,
                     deterministic,
                 )
+            except AppError as exc:
+                primary_error = exc
+                raise
+            except Exception as exc:
+                primary_error = exc
+                mapped = _map_vlm_runtime_error(exc, stage=stage)
+                if mapped is exc:
+                    raise
+                raise mapped from exc
             finally:
-                await asyncio.to_thread(self._runtime.after_request)
+                try:
+                    await asyncio.to_thread(self._runtime.after_request)
+                except Exception:
+                    # Cleanup must not mask a completed parse or the primary VLM failure.
+                    logger.exception("VLM runtime cleanup failed after %s stage", stage)
         finally:
             if lock_lease is not None:
                 lock_lease.release()
@@ -210,6 +228,35 @@ def _input_ids_from_model_inputs(inputs):
     if hasattr(inputs, "get"):
         return inputs.get("input_ids")
     return None
+
+
+def _map_vlm_runtime_error(exc: Exception, *, stage: str) -> Exception:
+    if isinstance(exc, AppError):
+        return exc
+    if isinstance(exc, TimeoutError):
+        return AppError(
+            ErrorCode.VLM_TIMEOUT,
+            "VLM request timed out",
+            status_code=504,
+            details={"stage": stage},
+        )
+    if _is_cuda_oom(exc):
+        return AppError(
+            ErrorCode.VLM_OOM,
+            "VLM runtime ran out of GPU memory",
+            status_code=503,
+            details={"stage": stage},
+        )
+    return exc
+
+
+def _is_cuda_oom(exc: Exception) -> bool:
+    exc_type_name = exc.__class__.__name__.lower()
+    message = str(exc).lower()
+    return (
+        "outofmemory" in exc_type_name
+        or ("out of memory" in message and ("cuda" in message or "gpu" in message))
+    )
 
 
 @lru_cache(maxsize=1)

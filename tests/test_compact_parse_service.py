@@ -99,15 +99,25 @@ def test_compact_parse_service_falls_back_when_optional_vlm_provider_fails():
     assert response.warnings == ["vlm enrichment failed"]
 
 
-def test_compact_parse_service_propagates_parser_busy_errors():
+@pytest.mark.parametrize(
+    "error_code",
+    [
+        ErrorCode.PARSER_BUSY,
+        ErrorCode.MODEL_NOT_READY,
+        ErrorCode.VLM_TIMEOUT,
+        ErrorCode.VLM_OOM,
+        ErrorCode.VLM_INVALID_JSON,
+    ],
+)
+def test_compact_parse_service_propagates_typed_vlm_errors(error_code):
     data = _palette_image_bytes()
 
     async def vlm_provider(_data, _deterministic):
         raise AppError(
-            ErrorCode.PARSER_BUSY,
-            "parser is busy",
+            error_code,
+            "typed VLM failure",
             status_code=503,
-            details={"retry_after_seconds": 1},
+            details={"component": "vlm_provider"},
         )
 
     service = CompactParseService(
@@ -120,6 +130,6 @@ def test_compact_parse_service_propagates_parser_busy_errors():
         asyncio.run(service.parse_image(data))
 
     error = exc_info.value
-    assert error.error_code == ErrorCode.PARSER_BUSY
+    assert error.error_code == error_code
     assert error.status_code == 503
-    assert error.details == {"retry_after_seconds": 1}
+    assert error.details == {"component": "vlm_provider"}

@@ -61,7 +61,7 @@ def _load_transformers_model(config: Gemma4LoaderConfig):
             "transformers is required to load Gemma 4; install the gpu extra"
         ) from exc
 
-    model_kwargs = {"device_map": "auto", "torch_dtype": "auto"}
+    model_kwargs = {"device_map": "auto", "dtype": "auto"}
     if config.quantization == "8bit":
         model_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
 
