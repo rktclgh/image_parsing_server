@@ -29,10 +29,17 @@ def get_vlm_provider(
 
 
 def get_compact_parse_service(
+    request: Request,
     settings: Settings = Depends(get_settings),
     vlm_provider: VLMCompactProvider | None = Depends(get_vlm_provider),
 ) -> CompactParseService:
-    return CompactParseService(settings=settings, vlm_provider=vlm_provider)
+    request_id = request.headers.get("x-request-id")
+    request_id_factory = (lambda: request_id) if request_id else None
+    return CompactParseService(
+        settings=settings,
+        request_id_factory=request_id_factory,
+        vlm_provider=vlm_provider,
+    )
 
 
 @router.post("/v1/parse/compact", response_model=CompactParseResponse)
