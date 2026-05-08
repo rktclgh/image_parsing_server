@@ -266,6 +266,37 @@ def test_gemma4_compact_provider_releases_generation_lock_when_model_not_ready()
         lease.release()
 
 
+def test_gemma4_compact_provider_calls_after_request_when_model_load_fails():
+    loader = FakeLoader(
+        processor=FakeProcessor(generated_text="{}"),
+        model=FakeModel(),
+    )
+    runtime = FakeRuntime(loader, ensure_error=TimeoutError("load took too long"))
+    generation_lock = GenerationLock(max_concurrent_generations=1)
+    provider = Gemma4CompactProvider(
+        runtime=runtime,
+        loader=loader,
+        prompt_text="Analyze.",
+        generation_lock=generation_lock,
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        asyncio.run(provider(PNG_BYTES, _deterministic_response()))
+
+    error = exc_info.value
+    assert error.error_code == ErrorCode.VLM_TIMEOUT
+    assert error.status_code == 504
+    assert error.details == {"stage": "load"}
+    assert runtime.ensure_loaded_calls == 1
+    assert runtime.after_request_calls == 1
+
+    lease = generation_lock.acquire(blocking=False)
+    try:
+        assert lease.acquired is True
+    finally:
+        lease.release()
+
+
 def test_gemma4_compact_provider_releases_generation_lock_when_output_is_invalid():
     loader = FakeLoader(
         processor=FakeProcessor(generated_text="not json"),
@@ -290,9 +321,93 @@ def test_gemma4_compact_provider_releases_generation_lock_when_output_is_invalid
         lease.release()
 
 
+def test_gemma4_compact_provider_maps_generation_timeout_safely():
+    loader = FakeLoader(
+        processor=FakeProcessor(generated_text="{}"),
+        model=FakeModel(generate_error=TimeoutError("generation timed out")),
+    )
+    provider = Gemma4CompactProvider(
+        runtime=FakeRuntime(loader),
+        loader=loader,
+        prompt_text="Analyze.",
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        asyncio.run(provider(PNG_BYTES, _deterministic_response()))
+
+    error = exc_info.value
+    assert error.error_code == ErrorCode.VLM_TIMEOUT
+    assert error.status_code == 504
+    assert error.details == {"stage": "generate"}
+    assert "generation timed out" not in error.message
+
+
+def test_gemma4_compact_provider_maps_cuda_oom_safely():
+    loader = FakeLoader(
+        processor=FakeProcessor(generated_text="{}"),
+        model=FakeModel(generate_error=RuntimeError("CUDA out of memory: private details")),
+    )
+    provider = Gemma4CompactProvider(
+        runtime=FakeRuntime(loader),
+        loader=loader,
+        prompt_text="Analyze.",
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        asyncio.run(provider(PNG_BYTES, _deterministic_response()))
+
+    error = exc_info.value
+    assert error.error_code == ErrorCode.VLM_OOM
+    assert error.status_code == 503
+    assert error.details == {"stage": "generate"}
+    assert "private details" not in error.message
+    assert "raw" not in error.details
+    assert "stack" not in error.details
+
+
+def test_gemma4_compact_provider_preserves_primary_error_when_after_request_fails():
+    loader = FakeLoader(
+        processor=FakeProcessor(generated_text="{}"),
+        model=FakeModel(generate_error=TimeoutError("generation timed out")),
+    )
+    runtime = FakeRuntime(loader, after_request_error=RuntimeError("cleanup failed"))
+    provider = Gemma4CompactProvider(
+        runtime=runtime,
+        loader=loader,
+        prompt_text="Analyze.",
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        asyncio.run(provider(PNG_BYTES, _deterministic_response()))
+
+    error = exc_info.value
+    assert error.error_code == ErrorCode.VLM_TIMEOUT
+    assert error.status_code == 504
+    assert error.details == {"stage": "generate"}
+    assert runtime.after_request_calls == 1
+
+
+def test_gemma4_compact_provider_does_not_rewrap_app_errors():
+    loader = FakeLoader(processor=FakeProcessor(generated_text="not json"), model=FakeModel())
+    provider = Gemma4CompactProvider(
+        runtime=FakeRuntime(loader),
+        loader=loader,
+        prompt_text="Analyze.",
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        asyncio.run(provider(PNG_BYTES, _deterministic_response()))
+
+    error = exc_info.value
+    assert error.error_code == ErrorCode.VLM_INVALID_JSON
+    assert error.__cause__ is not error
+
+
 class FakeRuntime:
-    def __init__(self, loader):
+    def __init__(self, loader, *, ensure_error=None, after_request_error=None):
         self.loader = loader
+        self.ensure_error = ensure_error
+        self.after_request_error = after_request_error
         self.ensure_loaded_calls = 0
         self.after_request_calls = 0
         self.ensure_thread_ids = []
@@ -301,10 +416,14 @@ class FakeRuntime:
     def ensure_loaded(self):
         self.ensure_loaded_calls += 1
         self.ensure_thread_ids.append(threading.get_ident())
+        if self.ensure_error is not None:
+            raise self.ensure_error
 
     def after_request(self):
         self.after_request_calls += 1
         self.after_request_thread_ids.append(threading.get_ident())
+        if self.after_request_error is not None:
+            raise self.after_request_error
 
 
 class FakeLoader:
@@ -356,11 +475,14 @@ class FakeInputs(dict):
 class FakeModel:
     device = "cuda:0"
 
-    def __init__(self, *, generated_ids=None):
+    def __init__(self, *, generated_ids=None, generate_error=None):
         self.generated_ids = generated_ids or [[1, 2]]
+        self.generate_error = generate_error
         self.generated_inputs = None
 
     def generate(self, **inputs):
+        if self.generate_error is not None:
+            raise self.generate_error
         self.generated_inputs = inputs
         return self.generated_ids
 
