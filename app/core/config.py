@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
     max_decoded_pixels: int = Field(default=16_000_000, ge=1)
     request_timeout_seconds: int = Field(default=60, ge=1)
+    generation_max_new_tokens: int = Field(default=900, ge=1)
+    generation_do_sample: bool = False
 
     expose_raw_vlm_output: bool = False
     debug_enabled: bool = False

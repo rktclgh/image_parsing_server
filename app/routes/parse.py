@@ -8,7 +8,10 @@ from app.services.compact_parse import CompactParseService, VLMCompactProvider
 router = APIRouter()
 
 
-def get_vlm_provider(request: Request) -> VLMCompactProvider | None:
+def get_vlm_provider(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> VLMCompactProvider | None:
     runtime = getattr(request.app.state, "vlm_runtime", None)
     loader = getattr(request.app.state, "model_loader", None)
     generation_lock = getattr(request.app.state, "generation_lock", None)
@@ -18,6 +21,10 @@ def get_vlm_provider(request: Request) -> VLMCompactProvider | None:
         runtime=runtime,
         loader=loader,
         generation_lock=generation_lock,
+        generate_kwargs={
+            "max_new_tokens": settings.generation_max_new_tokens,
+            "do_sample": settings.generation_do_sample,
+        },
     )
 
 

@@ -85,7 +85,11 @@ def test_parse_compact_wires_app_runtime_to_gemma_provider():
         model=FakeModel(),
     )
     app = create_app(
-        settings=Settings(vlm_mode="cold"),
+        settings=Settings(
+            vlm_mode="cold",
+            generation_max_new_tokens=321,
+            generation_do_sample=False,
+        ),
         model_loader=loader,
     )
     data = _palette_image_bytes()
@@ -99,6 +103,8 @@ def test_parse_compact_wires_app_runtime_to_gemma_provider():
     assert response.status_code == 200
     body = response.json()
     assert loader.load_calls == 1
+    assert loader._model.generated_inputs["max_new_tokens"] == 321
+    assert loader._model.generated_inputs["do_sample"] is False
     assert processor.messages[0]["content"][0]["type"] == "image"
     assert body["style"]["summary"] == "VLM style read"
     assert body["style"]["visual_tone"] == ["crisp"]
@@ -281,7 +287,9 @@ class FakeInputs(dict):
 
 class FakeModel:
     device = "cuda:0"
+    generated_inputs = None
 
     def generate(self, **inputs):
-        assert inputs == {"input_ids": [[1]]}
+        self.generated_inputs = inputs
+        assert inputs["input_ids"] == [[1]]
         return [[1, 2]]

@@ -10,6 +10,8 @@ def test_settings_defaults_match_parser_contract():
     assert settings.model_load_on_startup is True
     assert settings.max_upload_bytes == 20 * 1024 * 1024
     assert settings.max_decoded_pixels == 16_000_000
+    assert settings.generation_max_new_tokens == 900
+    assert settings.generation_do_sample is False
     assert settings.expose_raw_vlm_output is False
     assert settings.max_concurrent_generations == 1
     assert settings.service_version == "v1"
@@ -20,6 +22,8 @@ def test_settings_env_override(monkeypatch):
     monkeypatch.setenv("IMAGE_PARSER_QUANTIZATION", "none")
     monkeypatch.setenv("IMAGE_PARSER_VLM_MODE", "cold")
     monkeypatch.setenv("IMAGE_PARSER_MAX_UPLOAD_BYTES", "1024")
+    monkeypatch.setenv("IMAGE_PARSER_GENERATION_MAX_NEW_TOKENS", "512")
+    monkeypatch.setenv("IMAGE_PARSER_GENERATION_DO_SAMPLE", "true")
     monkeypatch.setenv("IMAGE_PARSER_EXPOSE_RAW_VLM_OUTPUT", "true")
 
     settings = Settings()
@@ -29,6 +33,8 @@ def test_settings_env_override(monkeypatch):
     assert settings.vlm_mode == "cold"
     assert settings.model_load_on_startup is False
     assert settings.max_upload_bytes == 1024
+    assert settings.generation_max_new_tokens == 512
+    assert settings.generation_do_sample is True
     assert settings.expose_raw_vlm_output is True
 
 
