@@ -15,6 +15,8 @@ import httpx
 
 
 IMAGE_ENV_VAR = "IMAGE_PARSER_GPU_HTTP_SMOKE_IMAGE"
+DEFAULT_EXPECTED_COLOR_TERMS = ("purple", "#8", "#9")
+DEFAULT_EXPECTED_SHAPE_TERMS = ("cloud", "blob", "rounded", "icon")
 
 
 def main() -> int:
@@ -74,6 +76,30 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--max-baseline-vram-mib", type=int, default=1500)
     parser.add_argument("--max-loaded-vram-delta-mib", type=int, default=12500)
     parser.add_argument("--max-released-vram-delta-mib", type=int, default=1500)
+    parser.add_argument(
+        "--expected-width",
+        type=int,
+        default=640,
+        help="expected fixture width; default matches the codex-color smoke image",
+    )
+    parser.add_argument(
+        "--expected-height",
+        type=int,
+        default=640,
+        help="expected fixture height; default matches the codex-color smoke image",
+    )
+    parser.add_argument(
+        "--expected-color-term",
+        action="append",
+        default=None,
+        help="semantic color token expected in the parser output; repeat for OR matching",
+    )
+    parser.add_argument(
+        "--expected-shape-term",
+        action="append",
+        default=None,
+        help="semantic shape token expected in the parser output; repeat for OR matching",
+    )
     parser.add_argument("--cold-release-timeout-seconds", type=float, default=30.0)
     parser.add_argument(
         "--require-cold-vram-release",
@@ -82,6 +108,8 @@ def _parse_args() -> argparse.Namespace:
     )
     args = parser.parse_args()
     args.scenario = args.scenario or ["all"]
+    args.expected_color_term = args.expected_color_term or list(DEFAULT_EXPECTED_COLOR_TERMS)
+    args.expected_shape_term = args.expected_shape_term or list(DEFAULT_EXPECTED_SHAPE_TERMS)
     return args
 
 
@@ -104,7 +132,7 @@ def _run_resident_warm(args: argparse.Namespace, image_path: Path, baseline_vram
         server.wait_ready(timeout_seconds=args.startup_timeout_seconds)
         loaded_vram_mib = _nvidia_used_memory_mib()
         response, elapsed = _post_parse(server.base_url, image_path, args.request_timeout_seconds)
-        _assert_compact_parse_response(response)
+        _assert_compact_parse_response(response, args=args)
         if elapsed > args.max_warm_request_seconds:
             raise RuntimeError(f"resident warm parse took too long: {elapsed:.2f}s")
         loaded_delta_mib = loaded_vram_mib - baseline_vram_mib
@@ -131,7 +159,7 @@ def _run_cold_unload(args: argparse.Namespace, image_path: Path, baseline_vram_m
     ) as server:
         server.wait_ready(timeout_seconds=args.startup_timeout_seconds)
         response, elapsed = _post_parse(server.base_url, image_path, args.request_timeout_seconds)
-        _assert_compact_parse_response(response)
+        _assert_compact_parse_response(response, args=args)
         if elapsed > args.max_cold_request_seconds:
             raise RuntimeError(f"cold first request took too long: {elapsed:.2f}s")
 
@@ -187,7 +215,7 @@ class _ServerProcess:
             encoding="utf-8",
             prefix="image-parser-gpu-http-smoke-",
             suffix=".log",
-            delete=False,
+            delete=True,
         )
         self._process = subprocess.Popen(
             [
@@ -264,21 +292,32 @@ def _post_parse(base_url: str, image_path: Path, timeout_seconds: float) -> tupl
     return response.json(), elapsed
 
 
-def _assert_compact_parse_response(payload: dict[str, Any]) -> None:
+def _assert_compact_parse_response(payload: dict[str, Any], *, args: argparse.Namespace) -> None:
     semantic_text = json.dumps(payload, ensure_ascii=False).lower()
     metadata = payload.get("metadata", {})
-    if metadata.get("width") != 640 or metadata.get("height") != 640:
+    if metadata.get("width") != args.expected_width or metadata.get("height") != args.expected_height:
         raise RuntimeError(f"unexpected image metadata: {metadata}")
     if not payload.get("style", {}).get("summary"):
         raise RuntimeError("missing style summary")
     if payload.get("warnings"):
         raise RuntimeError(f"unexpected parser warnings: {payload['warnings']}")
-    if "purple" not in semantic_text and "#8" not in semantic_text and "#9" not in semantic_text:
-        raise RuntimeError("response does not describe the purple visual")
-    if not any(token in semantic_text for token in ("cloud", "blob", "rounded", "icon")):
-        raise RuntimeError("response does not describe the rounded/blob/icon shape")
+    if not _contains_any_term(semantic_text, args.expected_color_term):
+        raise RuntimeError(
+            "response does not describe an expected color term: "
+            f"{args.expected_color_term}"
+        )
+    if not _contains_any_term(semantic_text, args.expected_shape_term):
+        raise RuntimeError(
+            "response does not describe an expected shape term: "
+            f"{args.expected_shape_term}"
+        )
     if "raw_vlm_output" in payload or "prompt" in semantic_text:
         raise RuntimeError("response leaked raw VLM or prompt content")
+
+
+def _contains_any_term(text: str, terms: list[str]) -> bool:
+    normalized_text = text.lower()
+    return any(term.lower() in normalized_text for term in terms)
 
 
 def _observe_vram_release(
@@ -301,6 +340,8 @@ def _nvidia_used_memory_mib() -> int:
     result = subprocess.run(
         [
             "nvidia-smi",
+            "-i",
+            _nvidia_device_id(),
             "--query-gpu=memory.used",
             "--format=csv,noheader,nounits",
         ],
@@ -309,6 +350,13 @@ def _nvidia_used_memory_mib() -> int:
         text=True,
     )
     return int(result.stdout.strip().splitlines()[0].strip())
+
+
+def _nvidia_device_id() -> str:
+    visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if not visible_devices:
+        return "0"
+    return visible_devices.split(",")[0].strip() or "0"
 
 
 def _free_port(host: str) -> int:
