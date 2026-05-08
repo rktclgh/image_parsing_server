@@ -69,6 +69,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--model-id", default="google/gemma-4-E4B-it")
     parser.add_argument("--quantization", choices=["8bit", "none"], default="8bit")
+    parser.add_argument("--max-new-tokens", type=int, default=900)
+    parser.add_argument("--do-sample", action="store_true", default=False)
     parser.add_argument("--startup-timeout-seconds", type=float, default=180.0)
     parser.add_argument("--request-timeout-seconds", type=float, default=180.0)
     parser.add_argument("--max-warm-request-seconds", type=float, default=60.0)
@@ -206,8 +208,8 @@ class _ServerProcess:
                 "IMAGE_PARSER_MODEL_ID": args.model_id,
                 "IMAGE_PARSER_QUANTIZATION": args.quantization,
                 "IMAGE_PARSER_MAX_CONCURRENT_GENERATIONS": "1",
-                "IMAGE_PARSER_GENERATION_MAX_NEW_TOKENS": "900",
-                "IMAGE_PARSER_GENERATION_DO_SAMPLE": "false",
+                "IMAGE_PARSER_GENERATION_MAX_NEW_TOKENS": str(args.max_new_tokens),
+                "IMAGE_PARSER_GENERATION_DO_SAMPLE": "true" if args.do_sample else "false",
             }
         )
         self._log = tempfile.NamedTemporaryFile(
@@ -311,7 +313,7 @@ def _assert_compact_parse_response(payload: dict[str, Any], *, args: argparse.Na
             "response does not describe an expected shape term: "
             f"{args.expected_shape_term}"
         )
-    if "raw_vlm_output" in payload or "prompt" in semantic_text:
+    if "raw_vlm_output" in payload or "prompt" in payload:
         raise RuntimeError("response leaked raw VLM or prompt content")
 
 
