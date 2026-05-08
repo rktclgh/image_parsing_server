@@ -14,6 +14,8 @@ def test_dockerfile_runs_single_uvicorn_worker() -> None:
     assert "uvicorn" in dockerfile
     assert "--workers" in dockerfile
     assert "app.main:app" in dockerfile
+    assert "useradd" in dockerfile
+    assert "USER appuser" in dockerfile
     assert "IMAGE_PARSER_MODEL_LOAD_ON_STARTUP" not in dockerfile
     assert "IMAGE_PARSER_MAX_CONCURRENT_GENERATIONS=1" in dockerfile
 
@@ -26,6 +28,7 @@ def test_compose_requests_one_gpu_and_one_worker() -> None:
     assert "- --workers\n      - \"1\"" not in compose
     assert "IMAGE_PARSER_MAX_CONCURRENT_GENERATIONS" in compose
     assert "CUDA_VISIBLE_DEVICES" in compose
+    assert "gpus:" in compose
     assert "healthcheck:" not in compose
     assert "IMAGE_PARSER_MODEL_LOAD_ON_STARTUP" not in compose
     gpu_device_request = compose.split("gpus:", 1)[1]

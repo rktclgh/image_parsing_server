@@ -35,6 +35,11 @@ RUN python -m pip install --upgrade pip setuptools wheel \
 COPY app ./app
 COPY prompts ./prompts
 
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser \
+    && mkdir -p /models/huggingface \
+    && chown -R appuser:appuser /app /models /opt/venv
+USER appuser
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
