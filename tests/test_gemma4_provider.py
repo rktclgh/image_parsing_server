@@ -7,6 +7,7 @@ from unittest.mock import ANY
 import pytest
 
 from app.core.errors import AppError
+from app.model.generation_lock import GenerationLock
 from app.model.gemma4_provider import (
     Gemma4CompactProvider,
     build_compact_messages,
@@ -183,6 +184,110 @@ def test_gemma4_compact_provider_rejects_missing_model_binding_safely():
     assert error.status_code == 503
     assert "raw" not in error.details
     assert "prompt" not in error.details
+
+
+def test_gemma4_compact_provider_rejects_when_generation_lock_is_busy():
+    loader = FakeLoader(
+        processor=FakeProcessor(generated_text="{}"),
+        model=FakeModel(),
+    )
+    runtime = FakeRuntime(loader)
+    generation_lock = GenerationLock(max_concurrent_generations=1)
+    held_lease = generation_lock.acquire(blocking=False)
+    provider = Gemma4CompactProvider(
+        runtime=runtime,
+        loader=loader,
+        prompt_text="Analyze.",
+        generation_lock=generation_lock,
+    )
+
+    try:
+        with pytest.raises(AppError) as exc_info:
+            asyncio.run(provider(PNG_BYTES, _deterministic_response()))
+    finally:
+        held_lease.release()
+
+    error = exc_info.value
+    assert error.error_code == ErrorCode.PARSER_BUSY
+    assert error.status_code == 503
+    assert error.details == {"retry_after_seconds": 1}
+    assert runtime.ensure_loaded_calls == 0
+    assert runtime.after_request_calls == 0
+    assert loader.model.generated_inputs is None
+
+
+def test_gemma4_compact_provider_releases_generation_lock_after_request():
+    loader = FakeLoader(
+        processor=FakeProcessor(
+            generated_text=json.dumps(
+                {
+                    "asset_type": "logo",
+                    "style": {"summary": "lock released after generation"},
+                }
+            )
+        ),
+        model=FakeModel(),
+    )
+    generation_lock = GenerationLock(max_concurrent_generations=1)
+    provider = Gemma4CompactProvider(
+        runtime=FakeRuntime(loader),
+        loader=loader,
+        prompt_text="Analyze.",
+        generation_lock=generation_lock,
+    )
+
+    asyncio.run(provider(PNG_BYTES, _deterministic_response()))
+
+    lease = generation_lock.acquire(blocking=False)
+    try:
+        assert lease.acquired is True
+    finally:
+        lease.release()
+
+
+def test_gemma4_compact_provider_releases_generation_lock_when_model_not_ready():
+    loader = FakeLoader(processor=FakeProcessor(generated_text="{}"), model=None)
+    generation_lock = GenerationLock(max_concurrent_generations=1)
+    provider = Gemma4CompactProvider(
+        runtime=FakeRuntime(loader),
+        loader=loader,
+        prompt_text="Analyze.",
+        generation_lock=generation_lock,
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        asyncio.run(provider(PNG_BYTES, _deterministic_response()))
+
+    assert exc_info.value.error_code == ErrorCode.MODEL_NOT_READY
+    lease = generation_lock.acquire(blocking=False)
+    try:
+        assert lease.acquired is True
+    finally:
+        lease.release()
+
+
+def test_gemma4_compact_provider_releases_generation_lock_when_output_is_invalid():
+    loader = FakeLoader(
+        processor=FakeProcessor(generated_text="not json"),
+        model=FakeModel(),
+    )
+    generation_lock = GenerationLock(max_concurrent_generations=1)
+    provider = Gemma4CompactProvider(
+        runtime=FakeRuntime(loader),
+        loader=loader,
+        prompt_text="Analyze.",
+        generation_lock=generation_lock,
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        asyncio.run(provider(PNG_BYTES, _deterministic_response()))
+
+    assert exc_info.value.error_code == ErrorCode.VLM_INVALID_JSON
+    lease = generation_lock.acquire(blocking=False)
+    try:
+        assert lease.acquired is True
+    finally:
+        lease.release()
 
 
 class FakeRuntime:

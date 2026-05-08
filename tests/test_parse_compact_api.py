@@ -107,6 +107,45 @@ def test_parse_compact_wires_app_runtime_to_gemma_provider():
     assert body["warnings"] == ["vlm low confidence"]
 
 
+def test_parse_compact_returns_parser_busy_when_generation_lock_is_held():
+    loader = FakeGemmaLoader(
+        processor=FakeProcessor(
+            generated_text=json.dumps(
+                {
+                    "asset_type": "document",
+                    "style": {"summary": "should not generate while busy"},
+                }
+            )
+        ),
+        model=FakeModel(),
+    )
+    app = create_app(
+        settings=Settings(vlm_mode="cold", max_concurrent_generations=1),
+        model_loader=loader,
+    )
+    data = _palette_image_bytes()
+
+    with TestClient(app) as client:
+        lease = app.state.generation_lock.acquire(blocking=False)
+        try:
+            response = client.post(
+                "/v1/parse/compact",
+                files={"file": ("palette.png", data, "image/png")},
+                headers={"x-request-id": "req-busy"},
+            )
+        finally:
+            lease.release()
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "error_code": "PARSER_BUSY",
+        "message": "parser is busy",
+        "request_id": "req-busy",
+        "details": {"retry_after_seconds": 1},
+    }
+    assert loader.load_calls == 0
+
+
 def test_parse_compact_delegates_to_compact_parse_service():
     app = create_app()
     captured = {}
