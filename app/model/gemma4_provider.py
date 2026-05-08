@@ -4,6 +4,7 @@ import asyncio
 from base64 import b64encode
 from collections.abc import Mapping
 from functools import lru_cache
+import logging
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -17,6 +18,7 @@ from app.schemas.vlm import VLMCompactOutput
 DEFAULT_PROMPT_PATH = (
     Path(__file__).resolve().parents[2] / "prompts" / "design_style_parser_compact_v1.txt"
 )
+logger = logging.getLogger(__name__)
 
 
 class Gemma4Runtime(Protocol):
@@ -114,13 +116,16 @@ class Gemma4CompactProvider:
                 raise
             except Exception as exc:
                 primary_error = exc
-                raise _map_vlm_runtime_error(exc, stage=stage) from exc
+                mapped = _map_vlm_runtime_error(exc, stage=stage)
+                if mapped is exc:
+                    raise
+                raise mapped from exc
             finally:
                 try:
                     await asyncio.to_thread(self._runtime.after_request)
                 except Exception:
-                    if primary_error is None:
-                        raise
+                    # Cleanup must not mask a completed parse or the primary VLM failure.
+                    logger.exception("VLM runtime cleanup failed after %s stage", stage)
         finally:
             if lock_lease is not None:
                 lock_lease.release()

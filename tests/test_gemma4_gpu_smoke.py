@@ -17,8 +17,6 @@ from app.services.compact_parse import CompactParseService
 
 pytestmark = pytest.mark.gpu
 
-DEFAULT_SMOKE_IMAGE = Path("/home/song/design-agent-vlm/input/codex-color.png")
-
 
 def _gpu_smoke_enabled() -> bool:
     return os.getenv("IMAGE_PARSER_RUN_GPU_SMOKE") == "1"
@@ -35,7 +33,7 @@ def test_gemma4_e4b_8bit_real_gpu_compact_parse_smoke():
     pytest.importorskip("accelerate")
     pytest.importorskip("torchvision")
 
-    image_path = Path(os.getenv("IMAGE_PARSER_GPU_SMOKE_IMAGE", DEFAULT_SMOKE_IMAGE))
+    image_path = _gpu_smoke_image_path()
     if not image_path.exists():
         pytest.skip(f"GPU smoke image not found: {image_path}")
 
@@ -123,3 +121,10 @@ def _nvidia_used_memory_mib() -> int:
     )
     first_value = result.stdout.strip().splitlines()[0]
     return int(first_value.strip())
+
+
+def _gpu_smoke_image_path() -> Path:
+    image_path = os.getenv("IMAGE_PARSER_GPU_SMOKE_IMAGE")
+    if not image_path:
+        pytest.skip("set IMAGE_PARSER_GPU_SMOKE_IMAGE to a local design image")
+    return Path(image_path).expanduser().resolve()

@@ -387,6 +387,32 @@ def test_gemma4_compact_provider_preserves_primary_error_when_after_request_fail
     assert runtime.after_request_calls == 1
 
 
+def test_gemma4_compact_provider_returns_success_when_after_request_fails(caplog):
+    loader = FakeLoader(
+        processor=FakeProcessor(
+            generated_text=json.dumps(
+                {
+                    "asset_type": "logo",
+                    "style": {"summary": "valid VLM output"},
+                }
+            )
+        ),
+        model=FakeModel(),
+    )
+    runtime = FakeRuntime(loader, after_request_error=RuntimeError("cleanup failed"))
+    provider = Gemma4CompactProvider(
+        runtime=runtime,
+        loader=loader,
+        prompt_text="Analyze.",
+    )
+
+    output = asyncio.run(provider(PNG_BYTES, _deterministic_response()))
+
+    assert output.style.summary == "valid VLM output"
+    assert runtime.after_request_calls == 1
+    assert "VLM runtime cleanup failed" in caplog.text
+
+
 def test_gemma4_compact_provider_does_not_rewrap_app_errors():
     loader = FakeLoader(processor=FakeProcessor(generated_text="not json"), model=FakeModel())
     provider = Gemma4CompactProvider(
@@ -401,6 +427,23 @@ def test_gemma4_compact_provider_does_not_rewrap_app_errors():
     error = exc_info.value
     assert error.error_code == ErrorCode.VLM_INVALID_JSON
     assert error.__cause__ is not error
+
+
+def test_gemma4_compact_provider_does_not_self_chain_unmapped_errors():
+    loader = FakeLoader(
+        processor=FakeProcessor(generated_text="{}"),
+        model=FakeModel(generate_error=ValueError("unexpected provider failure")),
+    )
+    provider = Gemma4CompactProvider(
+        runtime=FakeRuntime(loader),
+        loader=loader,
+        prompt_text="Analyze.",
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        asyncio.run(provider(PNG_BYTES, _deterministic_response()))
+
+    assert exc_info.value.__cause__ is not exc_info.value
 
 
 class FakeRuntime:
