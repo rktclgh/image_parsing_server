@@ -4,6 +4,7 @@ from uuid import uuid4
 from fastapi.concurrency import run_in_threadpool
 
 from app.core.config import Settings, get_settings
+from app.core.errors import AppError
 from app.parsers.deterministic import analyze_image
 from app.parsers.fusion import fuse_deterministic_with_vlm
 from app.schemas.compact import (
@@ -13,6 +14,7 @@ from app.schemas.compact import (
     ParseMetadata,
 )
 from app.schemas.deterministic import DeterministicAnalysis, PaletteColor
+from app.schemas.errors import ErrorCode
 from app.schemas.vlm import VLMCompactOutput
 
 VLMCompactProvider = Callable[
@@ -42,6 +44,10 @@ class CompactParseService:
         try:
             vlm_output = await self._vlm_provider(data, deterministic)
             return fuse_deterministic_with_vlm(deterministic, vlm_output)
+        except AppError as exc:
+            if exc.error_code == ErrorCode.PARSER_BUSY:
+                raise
+            return _with_warning(deterministic, "vlm enrichment failed")
         except Exception:
             return _with_warning(deterministic, "vlm enrichment failed")
 

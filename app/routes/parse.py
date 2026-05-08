@@ -11,9 +11,14 @@ router = APIRouter()
 def get_vlm_provider(request: Request) -> VLMCompactProvider | None:
     runtime = getattr(request.app.state, "vlm_runtime", None)
     loader = getattr(request.app.state, "model_loader", None)
+    generation_lock = getattr(request.app.state, "generation_lock", None)
     if runtime is None or loader is None:
         return None
-    return Gemma4CompactProvider(runtime=runtime, loader=loader)
+    return Gemma4CompactProvider(
+        runtime=runtime,
+        loader=loader,
+        generation_lock=generation_lock,
+    )
 
 
 def get_compact_parse_service(

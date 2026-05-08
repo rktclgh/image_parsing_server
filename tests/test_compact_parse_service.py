@@ -2,8 +2,11 @@ from io import BytesIO
 import asyncio
 
 from PIL import Image
+import pytest
 
 from app.core.config import Settings
+from app.core.errors import AppError
+from app.schemas.errors import ErrorCode
 from app.schemas.vlm import VLMCompactOutput
 from app.services.compact_parse import CompactParseService
 
@@ -94,3 +97,29 @@ def test_compact_parse_service_falls_back_when_optional_vlm_provider_fails():
     assert response.style.summary == "deterministic image analysis"
     assert [swatch.hex for swatch in response.style.palette] == ["#ff0000", "#0000ff"]
     assert response.warnings == ["vlm enrichment failed"]
+
+
+def test_compact_parse_service_propagates_parser_busy_errors():
+    data = _palette_image_bytes()
+
+    async def vlm_provider(_data, _deterministic):
+        raise AppError(
+            ErrorCode.PARSER_BUSY,
+            "parser is busy",
+            status_code=503,
+            details={"retry_after_seconds": 1},
+        )
+
+    service = CompactParseService(
+        settings=Settings(),
+        request_id_factory=lambda: "req-busy",
+        vlm_provider=vlm_provider,
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        asyncio.run(service.parse_image(data))
+
+    error = exc_info.value
+    assert error.error_code == ErrorCode.PARSER_BUSY
+    assert error.status_code == 503
+    assert error.details == {"retry_after_seconds": 1}

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from app.core.errors import AppError
+from app.model.generation_lock import GenerationLock
 from app.parsers.vlm_compact import parse_vlm_compact_output
 from app.schemas.compact import CompactParseResponse
 from app.schemas.errors import ErrorCode
@@ -73,26 +74,43 @@ class Gemma4CompactProvider:
         loader: Gemma4LoaderBinding,
         prompt_text: str | None = None,
         generate_kwargs: Mapping[str, Any] | None = None,
+        generation_lock: GenerationLock | None = None,
     ) -> None:
         self._runtime = runtime
         self._loader = loader
         self._prompt_text = prompt_text
         self._generate_kwargs = dict(generate_kwargs or {})
+        self._generation_lock = generation_lock
 
     async def __call__(
         self,
         image_bytes: bytes,
         deterministic: CompactParseResponse,
     ) -> VLMCompactOutput:
-        await asyncio.to_thread(self._runtime.ensure_loaded)
+        lock_lease = None
+        if self._generation_lock is not None:
+            lock_lease = self._generation_lock.acquire(blocking=False)
+            if not lock_lease.acquired:
+                raise AppError(
+                    ErrorCode.PARSER_BUSY,
+                    "parser is busy",
+                    status_code=503,
+                    details={"retry_after_seconds": 1},
+                )
+
         try:
-            return await asyncio.to_thread(
-                self._generate_and_parse,
-                image_bytes,
-                deterministic,
-            )
+            await asyncio.to_thread(self._runtime.ensure_loaded)
+            try:
+                return await asyncio.to_thread(
+                    self._generate_and_parse,
+                    image_bytes,
+                    deterministic,
+                )
+            finally:
+                await asyncio.to_thread(self._runtime.after_request)
         finally:
-            await asyncio.to_thread(self._runtime.after_request)
+            if lock_lease is not None:
+                lock_lease.release()
 
     def _generate_and_parse(
         self,

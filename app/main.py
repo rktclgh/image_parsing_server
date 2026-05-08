@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
+from app.model.generation_lock import GenerationLock
 from app.model.gemma4_loader import Gemma4Loader, Gemma4LoaderConfig
 from app.model.runtime import Loader, VLMRuntime
 from app.routes.parse import router as parse_router
@@ -48,6 +49,9 @@ def create_app(
     )
     app.state.model_loader = loader
     app.state.vlm_runtime = runtime
+    app.state.generation_lock = GenerationLock(
+        max_concurrent_generations=resolved_settings.max_concurrent_generations,
+    )
     app.state.runtime_mode_controller = RuntimeModeController(
         resolved_settings,
         runtime=runtime,
