@@ -16,15 +16,6 @@ services:
       IMAGE_PARSER_VLM_MODE: ${IMAGE_PARSER_VLM_MODE:-resident}
       IMAGE_PARSER_MODEL_LOAD_ON_STARTUP: ${IMAGE_PARSER_MODEL_LOAD_ON_STARTUP:-true}
       IMAGE_PARSER_MAX_CONCURRENT_GENERATIONS: ${IMAGE_PARSER_MAX_CONCURRENT_GENERATIONS:-1}
-    command:
-      - uvicorn
-      - app.main:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
-      - --workers
-      - "1"
     ports:
       - "${IMAGE_PARSER_PORT:-8000}:8000"
     volumes:
@@ -33,12 +24,6 @@ services:
       - driver: nvidia
         count: 1
         capabilities: [gpu]
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/healthz"]
-      interval: 30s
-      timeout: 5s
-      start_period: 30s
-      retries: 3
 
 volumes:
   hf-cache:

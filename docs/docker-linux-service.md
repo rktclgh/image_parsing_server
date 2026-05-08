@@ -7,11 +7,11 @@ This package runs `image_parsing_server` as a one-worker FastAPI/Uvicorn service
 Use a branch based on `develop` so packaging work does not modify the PR #18 branch while it waits for review:
 
 ```bash
-cd /home/song/oh-my-design/image_parsing_server
+cd path/to/image_parsing_server
 git fetch origin develop
 git worktree add -b feat/docker-linux-service-packaging \
-  /home/song/oh-my-design/image_parsing_server-docker-packaging origin/develop
-cd /home/song/oh-my-design/image_parsing_server-docker-packaging
+  ../image_parsing_server-docker-packaging origin/develop
+cd ../image_parsing_server-docker-packaging
 ```
 
 ## Configure
@@ -29,7 +29,7 @@ Important defaults:
 - `IMAGE_PARSER_MODEL_LOAD_ON_STARTUP=true`
 - `IMAGE_PARSER_MAX_CONCURRENT_GENERATIONS=1`
 - `CUDA_VISIBLE_DEVICES=0` pins the process to one visible GPU while the compose device reservation requests one NVIDIA GPU.
-- Docker/Compose command includes `uvicorn ... --workers 1`
+- Docker image command includes `uvicorn ... --workers 1`; Compose intentionally relies on the image default command.
 
 ## Build
 
@@ -71,7 +71,7 @@ Run these on `ssh linux` before claiming runtime validation:
 ```bash
 nvidia-smi
 docker info --format "{{json .Runtimes}}"
-docker run --rm --gpus all nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04 nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.8.1-base-ubuntu24.04 nvidia-smi
 ```
 
 If any preflight fails, report the blocker instead of treating a CPU-only build as GPU validation.

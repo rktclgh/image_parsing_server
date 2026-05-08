@@ -10,6 +10,7 @@ def _read(relative_path: str) -> str:
 def test_dockerfile_runs_single_uvicorn_worker() -> None:
     dockerfile = _read("Dockerfile")
 
+    assert "python -m pip install -e" not in dockerfile
     assert '"uvicorn", "app.main:app"' in dockerfile
     assert '"--workers", "1"' in dockerfile
     assert "IMAGE_PARSER_MAX_CONCURRENT_GENERATIONS=1" in dockerfile
@@ -20,10 +21,11 @@ def test_compose_requests_one_gpu_and_one_worker() -> None:
 
     assert "capabilities: [gpu]" in compose
     assert "count: 1" in compose
-    assert "- --workers\n      - \"1\"" in compose
+    assert "- --workers\n      - \"1\"" not in compose
     assert "IMAGE_PARSER_MAX_CONCURRENT_GENERATIONS" in compose
     assert "CUDA_VISIBLE_DEVICES" in compose
-    gpu_device_request = compose.split("gpus:", 1)[1].split("healthcheck:", 1)[0]
+    assert "healthcheck:" not in compose
+    gpu_device_request = compose.split("gpus:", 1)[1]
     assert "required:" not in gpu_device_request
 
 
@@ -41,5 +43,7 @@ def test_docker_service_docs_call_out_gpu_validation_boundary() -> None:
     docs = _read("docs/docker-linux-service.md")
 
     assert "one Uvicorn worker" in docs
+    assert "/home/song/oh-my-design" not in docs
     assert "not a substitute for GPU runtime validation" in docs
     assert "docker run --rm --gpus all" in docs
+    assert "/home/song/oh-my-design" not in _read("README.md")

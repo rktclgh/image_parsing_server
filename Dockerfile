@@ -24,16 +24,17 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 
 COPY pyproject.toml README.md ./
-COPY app ./app
-COPY prompts ./prompts
-
+RUN mkdir -p app && touch app/__init__.py
 ARG INSTALL_EXTRAS=gpu
 RUN python -m pip install --upgrade pip setuptools wheel \
     && if [ -n "$INSTALL_EXTRAS" ]; then \
-        python -m pip install -e ".[${INSTALL_EXTRAS}]"; \
+        python -m pip install ".[${INSTALL_EXTRAS}]"; \
     else \
-        python -m pip install -e .; \
+        python -m pip install .; \
     fi
+
+COPY app ./app
+COPY prompts ./prompts
 
 EXPOSE 8000
 

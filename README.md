@@ -22,7 +22,7 @@ Docker packaging is available for the Linux GPU host. The service is intentional
 
 ```bash
 ssh linux
-cd /home/song/oh-my-design/image_parsing_server-docker-packaging
+cd path/to/image_parsing_server-docker-packaging
 cp .env.example .env
 docker compose build image-parser
 docker compose up -d image-parser
