@@ -1,9 +1,11 @@
+import json
 from io import BytesIO
 
 from fastapi.testclient import TestClient
 from PIL import Image
 import pytest
 
+from app.core.config import Settings
 from app.main import create_app
 from app.routes.parse import get_compact_parse_service
 from app.schemas.compact import CompactParseResponse, CompactStyleProfile, ParseMetadata
@@ -24,8 +26,10 @@ def _palette_image_bytes() -> bytes:
     return buffer.getvalue()
 
 
-def test_parse_compact_returns_deterministic_image_summary():
-    client = TestClient(create_app())
+def test_parse_compact_falls_back_to_deterministic_image_summary_when_vlm_unavailable():
+    client = TestClient(
+        create_app(settings=Settings(vlm_mode="cold"), model_loader=FailingGemmaLoader())
+    )
     data = _palette_image_bytes()
 
     response = client.post(
@@ -58,7 +62,49 @@ def test_parse_compact_returns_deterministic_image_summary():
         "role": "accent",
     }
     assert body["elements"] == []
-    assert body["warnings"] == []
+    assert body["warnings"] == ["vlm enrichment failed"]
+
+
+def test_parse_compact_wires_app_runtime_to_gemma_provider():
+    processor = FakeProcessor(
+        generated_text=json.dumps(
+            {
+                "asset_type": "document",
+                "style": {
+                    "summary": "VLM style read",
+                    "visual_tone": ["crisp"],
+                    "typography": ["bold sans"],
+                    "composition": ["split layout"],
+                },
+                "warnings": ["vlm low confidence"],
+            }
+        )
+    )
+    loader = FakeGemmaLoader(
+        processor=processor,
+        model=FakeModel(),
+    )
+    app = create_app(
+        settings=Settings(vlm_mode="cold"),
+        model_loader=loader,
+    )
+    data = _palette_image_bytes()
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/compact",
+            files={"file": ("palette.png", data, "image/png")},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert loader.load_calls == 1
+    assert processor.messages[0]["content"][0]["type"] == "image"
+    assert body["style"]["summary"] == "VLM style read"
+    assert body["style"]["visual_tone"] == ["crisp"]
+    assert body["style"]["typography"] == ["bold sans"]
+    assert body["style"]["composition"] == ["split layout"]
+    assert body["warnings"] == ["vlm low confidence"]
 
 
 def test_parse_compact_delegates_to_compact_parse_service():
@@ -118,3 +164,85 @@ def test_parse_compact_rejects_unsupported_image_types():
 
     assert response.status_code == 415
     assert response.json()["error_code"] == "UNSUPPORTED_MEDIA_TYPE"
+
+
+class FailingGemmaLoader:
+    model = None
+    processor = None
+
+    @property
+    def loaded(self):
+        return False
+
+    def load(self):
+        raise RuntimeError("fake model unavailable")
+
+    def unload(self):
+        return None
+
+
+class FakeGemmaLoader:
+    def __init__(self, *, processor, model):
+        self._processor = processor
+        self._model = model
+        self.processor = None
+        self.model = None
+        self.load_calls = 0
+        self.unload_calls = 0
+
+    @property
+    def loaded(self):
+        return self.processor is not None and self.model is not None
+
+    def load(self):
+        self.load_calls += 1
+        self.processor = self._processor
+        self.model = self._model
+        return self
+
+    def unload(self):
+        self.unload_calls += 1
+        self.processor = None
+        self.model = None
+
+
+class FakeProcessor:
+    def __init__(self, *, generated_text: str):
+        self.generated_text = generated_text
+        self.messages = None
+        self.decoded_ids = None
+
+    def apply_chat_template(
+        self,
+        messages,
+        *,
+        add_generation_prompt,
+        tokenize,
+        return_dict,
+        return_tensors,
+    ):
+        self.messages = messages
+        assert add_generation_prompt is True
+        assert tokenize is True
+        assert return_dict is True
+        assert return_tensors == "pt"
+        return FakeInputs({"input_ids": [[1]]})
+
+    def batch_decode(self, generated_ids, *, skip_special_tokens):
+        self.decoded_ids = generated_ids
+        assert skip_special_tokens is True
+        return [self.generated_text]
+
+
+class FakeInputs(dict):
+    def to(self, device):
+        assert device is not None
+        return self
+
+
+class FakeModel:
+    device = "cuda:0"
+
+    def generate(self, **inputs):
+        assert inputs == {"input_ids": [[1]]}
+        return [[1, 2]]
